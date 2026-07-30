@@ -4,22 +4,13 @@
   --ink: #111;
   --muted: #666;
   --line: #d6d6d6;
-  --soft: #f2f2f2;
   --correct: #4f7650;
   --present: #b08a37;
   --absent: #73777a;
 }
 
-html, body {
-  margin: 0;
-  background: #fff;
-  color: var(--ink);
-}
-
-body {
-  font-family: "Times New Roman", Times, serif;
-}
-
+html, body { margin: 0; background: #fff; color: var(--ink); }
+body { font-family: "Times New Roman", Times, serif; }
 button { -webkit-tap-highlight-color: transparent; }
 
 .game-shell {
@@ -60,10 +51,7 @@ h1 {
   line-height: 1;
 }
 
-.game-header p {
-  margin: 3px 0 0;
-  font-size: 1rem;
-}
+.game-header p { margin: 3px 0 0; font-size: 1rem; }
 
 .icon-button {
   position: absolute;
@@ -133,11 +121,7 @@ h1 {
   margin: 0 auto;
 }
 
-.keyboard-row {
-  display: flex;
-  justify-content: center;
-  gap: 5px;
-}
+.keyboard-row { display: flex; justify-content: center; gap: 5px; }
 
 .key {
   flex: 1 1 0;
@@ -155,12 +139,7 @@ h1 {
   cursor: pointer;
 }
 
-.key.wide {
-  flex-basis: 65px;
-  max-width: 65px;
-  font-size: .63rem;
-}
-
+.key.wide { flex-basis: 65px; max-width: 65px; font-size: .63rem; }
 .key.correct { background: var(--correct); color: #fff; }
 .key.present { background: var(--present); color: #fff; }
 .key.absent { background: var(--absent); color: #fff; }
@@ -186,29 +165,16 @@ h1 {
   cursor: pointer;
 }
 
+.disabled { opacity: .45; pointer-events: none; }
+
 @media (max-width: 520px) {
-  .game-shell {
-    min-height: 620px;
-    padding: 12px 10px 16px;
-  }
-
-  .row {
-    grid-template-columns: repeat(5, min(13vw, 50px));
-  }
-
+  .game-shell { min-height: 620px; padding: 12px 10px 16px; }
+  .row { grid-template-columns: repeat(5, min(13vw, 50px)); }
   .tile {
     width: min(13vw, 50px);
     height: min(13vw, 50px);
     font-size: clamp(1.3rem, 6vw, 1.7rem);
   }
-
-  .key {
-    height: 42px;
-    font-size: .75rem;
-  }
-
-  .game-footer {
-    justify-content: center;
-    flex-wrap: wrap;
-  }
+  .key { height: 42px; font-size: .75rem; }
+  .game-footer { justify-content: center; flex-wrap: wrap; }
 }

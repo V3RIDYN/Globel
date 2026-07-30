@@ -1,16 +1,19 @@
-const ANSWERS = ["PRESS", "STORY", "MEDIA", "WRITE", "PHOTO", "PRINT", "QUOTE"];
 const MAX_GUESSES = 6;
 const WORD_LENGTH = 5;
 
 let answer = "";
+let puzzleDate = "";
+let puzzleNumber = "";
 let currentGuess = "";
 let guesses = [];
+let results = [];
 let gameOver = false;
 
 const board = document.getElementById("board");
 const keyboard = document.getElementById("keyboard");
 const message = document.getElementById("message");
-const resetButton = document.getElementById("resetButton");
+const puzzleLabel = document.getElementById("puzzleLabel");
+const clearButton = document.getElementById("clearButton");
 const helpButton = document.getElementById("helpButton");
 const helpPanel = document.getElementById("helpPanel");
 
@@ -20,14 +23,137 @@ const keyboardLayout = [
   ["ENTER","Z","X","C","V","B","N","M","BACK"]
 ];
 
-function startGame() {
-  answer = ANSWERS[Math.floor(Math.random() * ANSWERS.length)];
-  currentGuess = "";
-  guesses = [];
-  gameOver = false;
-  message.textContent = "";
-  createBoard();
-  createKeyboard();
+function getCentralDateKey(date = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: GLOBEL_CONFIG.timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).formatToParts(date);
+
+  const value = type => parts.find(part => part.type === type)?.value;
+  return `${value("year")}-${value("month")}-${value("day")}`;
+}
+
+function parseCsv(text) {
+  const rows = [];
+  let row = [];
+  let field = "";
+  let inQuotes = false;
+
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i];
+    const next = text[i + 1];
+
+    if (char === '"' && inQuotes && next === '"') {
+      field += '"';
+      i++;
+    } else if (char === '"') {
+      inQuotes = !inQuotes;
+    } else if (char === "," && !inQuotes) {
+      row.push(field);
+      field = "";
+    } else if ((char === "\n" || char === "\r") && !inQuotes) {
+      if (char === "\r" && next === "\n") i++;
+      row.push(field);
+      if (row.some(cell => cell.trim() !== "")) rows.push(row);
+      row = [];
+      field = "";
+    } else {
+      field += char;
+    }
+  }
+
+  row.push(field);
+  if (row.some(cell => cell.trim() !== "")) rows.push(row);
+  return rows;
+}
+
+function normalizeDate(value) {
+  const trimmed = String(value || "").trim();
+  const isoMatch = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (isoMatch) return `${isoMatch[1]}-${isoMatch[2]}-${isoMatch[3]}`;
+
+  const slashMatch = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (slashMatch) {
+    return `${slashMatch[3]}-${slashMatch[1].padStart(2, "0")}-${slashMatch[2].padStart(2, "0")}`;
+  }
+
+  return trimmed;
+}
+
+async function loadTodayPuzzle() {
+  const response = await fetch(`${GLOBEL_CONFIG.puzzleFeedUrl}&cacheBust=${Date.now()}`, {
+    cache: "no-store"
+  });
+
+  if (!response.ok) {
+    throw new Error("The puzzle schedule could not be loaded.");
+  }
+
+  const rows = parseCsv(await response.text());
+  const headerIndex = rows.findIndex(row =>
+    row.some(cell => cell.trim().toUpperCase() === "DATE") &&
+    row.some(cell => cell.trim().toUpperCase() === "ANSWER")
+  );
+
+  if (headerIndex === -1) {
+    throw new Error("The spreadsheet header row could not be found.");
+  }
+
+  const headers = rows[headerIndex].map(cell => cell.trim().toUpperCase());
+  const dateIndex = headers.indexOf("DATE");
+  const answerIndex = headers.indexOf("ANSWER");
+  const statusIndex = headers.indexOf("STATUS");
+  const numberIndex = headers.indexOf("PUZZLE #");
+
+  const requestedDate =
+    new URLSearchParams(window.location.search).get("date") || getCentralDateKey();
+
+  const match = rows.slice(headerIndex + 1).find(row => {
+    const date = normalizeDate(row[dateIndex]);
+    const status = String(row[statusIndex] || "").trim().toUpperCase();
+    return date === requestedDate && status === GLOBEL_CONFIG.readyStatus;
+  });
+
+  if (!match) {
+    throw new Error(`No Ready puzzle is scheduled for ${requestedDate}.`);
+  }
+
+  const loadedAnswer = String(match[answerIndex] || "").trim().toUpperCase();
+  if (!/^[A-Z]{5}$/.test(loadedAnswer)) {
+    throw new Error("Today’s answer must contain exactly five letters.");
+  }
+
+  return {
+    date: requestedDate,
+    answer: loadedAnswer,
+    number: String(match[numberIndex] || "").trim()
+  };
+}
+
+function storageKey() {
+  return `globel:${puzzleDate}`;
+}
+
+function saveState() {
+  localStorage.setItem(storageKey(), JSON.stringify({
+    guesses,
+    results,
+    gameOver
+  }));
+}
+
+function loadState() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(storageKey()));
+    if (!saved || !Array.isArray(saved.guesses) || !Array.isArray(saved.results)) return;
+    guesses = saved.guesses.slice(0, MAX_GUESSES);
+    results = saved.results.slice(0, MAX_GUESSES);
+    gameOver = Boolean(saved.gameOver);
+  } catch {
+    localStorage.removeItem(storageKey());
+  }
 }
 
 function createBoard() {
@@ -60,7 +186,6 @@ function createKeyboard() {
       button.className = "key";
       button.textContent = letter === "BACK" ? "⌫" : letter;
       button.setAttribute("aria-label", letter === "BACK" ? "Backspace" : letter);
-
       if (letter === "ENTER" || letter === "BACK") button.classList.add("wide");
       button.addEventListener("click", () => handleInput(letter));
       row.appendChild(button);
@@ -69,10 +194,26 @@ function createKeyboard() {
   });
 }
 
-function handleInput(key) {
-  if (gameOver) return;
+function restoreBoard() {
+  guesses.forEach((guess, rowIndex) => {
+    const result = results[rowIndex];
+    for (let i = 0; i < WORD_LENGTH; i++) {
+      const tile = document.getElementById(`tile-${rowIndex}-${i}`);
+      tile.textContent = guess[i];
+      tile.classList.add(result[i]);
+      updateKeyColor(guess[i], result[i]);
+    }
+  });
 
+  if (gameOver) {
+    message.textContent = guesses.includes(answer) ? "Correct." : `The word was ${answer}.`;
+  }
+}
+
+function handleInput(key) {
+  if (gameOver || !answer) return;
   if (key === "ENTER") return submitGuess();
+
   if (key === "BACK") {
     currentGuess = currentGuess.slice(0, -1);
     return updateCurrentRow();
@@ -86,6 +227,8 @@ function handleInput(key) {
 
 function updateCurrentRow() {
   const rowIndex = guesses.length;
+  if (rowIndex >= MAX_GUESSES) return;
+
   for (let i = 0; i < WORD_LENGTH; i++) {
     const tile = document.getElementById(`tile-${rowIndex}-${i}`);
     tile.textContent = currentGuess[i] || "";
@@ -102,6 +245,7 @@ function submitGuess() {
   const result = scoreGuess(currentGuess, answer);
   revealGuess(currentGuess, result);
   guesses.push(currentGuess);
+  results.push(result);
 
   if (currentGuess === answer) {
     message.textContent = "Correct.";
@@ -112,7 +256,9 @@ function submitGuess() {
   } else {
     message.textContent = "";
   }
+
   currentGuess = "";
+  saveState();
 }
 
 function scoreGuess(guess, target) {
@@ -160,6 +306,33 @@ function updateKeyColor(letter, status) {
   }
 }
 
+async function initialize() {
+  createBoard();
+  createKeyboard();
+  keyboard.classList.add("disabled");
+
+  try {
+    const puzzle = await loadTodayPuzzle();
+    answer = puzzle.answer;
+    puzzleDate = puzzle.date;
+    puzzleNumber = puzzle.number;
+
+    puzzleLabel.textContent = puzzleNumber
+      ? `Puzzle #${puzzleNumber} · ${puzzleDate}`
+      : `Daily puzzle · ${puzzleDate}`;
+
+    loadState();
+    restoreBoard();
+    keyboard.classList.remove("disabled");
+    message.textContent = gameOver
+      ? (guesses.includes(answer) ? "Correct." : `The word was ${answer}.`)
+      : "";
+  } catch (error) {
+    puzzleLabel.textContent = "Daily five-letter word game";
+    message.textContent = error.message;
+  }
+}
+
 document.addEventListener("keydown", event => {
   const key = event.key.toUpperCase();
   if (key === "ENTER") handleInput("ENTER");
@@ -172,5 +345,10 @@ helpButton.addEventListener("click", () => {
   helpButton.setAttribute("aria-expanded", String(!helpPanel.hidden));
 });
 
-resetButton.addEventListener("click", startGame);
-startGame();
+clearButton.addEventListener("click", () => {
+  if (!puzzleDate) return;
+  localStorage.removeItem(storageKey());
+  window.location.reload();
+});
+
+initialize();
