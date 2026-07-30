@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Globel | The Globe</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Lato:wght@400;700;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="game-shell">
+    <header class="game-header">
+      <div class="publication-label">THE GLOBE PRESENTS</div>
+      <div class="title-row">
+        <h1>Globel</h1>
+        <button id="helpButton" class="icon-button" type="button" aria-label="How to play">?</button>
+      </div>
+      <p>Guess the five-letter word in six tries.</p>
+    </header>
+
+    <section id="helpPanel" class="help-panel" hidden>
+      <strong>How to play:</strong> Green means the letter is correct. Gold means it belongs elsewhere. Gray means it is not in the word.
+    </section>
+
+    <section id="board" class="board" aria-label="Globel game board"></section>
+    <p id="message" class="message" role="status" aria-live="polite"></p>
+    <section id="keyboard" class="keyboard" aria-label="On-screen keyboard"></section>
+
+    <footer class="game-footer">
+      <span>A word game from <em>The Globe</em></span>
+      <button id="resetButton" type="button">Reset prototype</button>
+    </footer>
+  </main>
+  <script src="script.js"></script>
+</body>
+</html>
