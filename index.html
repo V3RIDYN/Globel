@@ -17,7 +17,7 @@
         <h1>Globel</h1>
         <button id="helpButton" class="icon-button" type="button" aria-label="How to play">?</button>
       </div>
-      <p>Guess the five-letter word in six tries.</p>
+      <p id="puzzleLabel">Loading today’s puzzle…</p>
     </header>
 
     <section id="helpPanel" class="help-panel" hidden>
@@ -29,10 +29,11 @@
     <section id="keyboard" class="keyboard" aria-label="On-screen keyboard"></section>
 
     <footer class="game-footer">
-      <span>A word game from <em>The Globe</em></span>
-      <button id="resetButton" type="button">Reset prototype</button>
+      <span>A daily word game from <em>The Globe</em></span>
+      <button id="clearButton" type="button">Clear saved game</button>
     </footer>
   </main>
+  <script src="config.js"></script>
   <script src="script.js"></script>
 </body>
 </html>
