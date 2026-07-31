@@ -24,6 +24,14 @@
       <strong>How to play:</strong> Green means the letter is correct. Gold means it belongs elsewhere. Gray means it is not in the word.
     </section>
 
+    <div class="game-tools">
+      <button id="hintButton" class="hint-button" type="button" disabled>Show Hint</button>
+    </div>
+
+    <section id="hintPanel" class="hint-panel" hidden>
+      <strong>Hint:</strong> <span id="hintText"></span>
+    </section>
+
     <section id="board" class="board" aria-label="Globel game board"></section>
     <p id="message" class="message" role="status" aria-live="polite"></p>
     <section id="keyboard" class="keyboard" aria-label="On-screen keyboard"></section>
@@ -33,6 +41,18 @@
       <button id="clearButton" type="button">Clear saved game</button>
     </footer>
   </main>
+
+  <div id="resultModal" class="modal-backdrop" hidden>
+    <section class="result-modal" role="dialog" aria-modal="true" aria-labelledby="resultTitle">
+      <button id="closeModalButton" class="modal-close" type="button" aria-label="Close">×</button>
+      <div class="modal-label">THE GLOBE</div>
+      <h2 id="resultTitle">Congratulations!</h2>
+      <p id="resultMessage"></p>
+      <p class="come-back">Come back tomorrow for a new Globel.</p>
+      <button id="doneButton" class="done-button" type="button">Done</button>
+    </section>
+  </div>
+
   <script src="config.js"></script>
   <script src="script.js"></script>
 </body>

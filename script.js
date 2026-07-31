@@ -4,6 +4,9 @@ const WORD_LENGTH = 5;
 let answer = "";
 let puzzleDate = "";
 let puzzleNumber = "";
+let hint = "";
+let hintUsed = false;
+let resultModalShown = false;
 let currentGuess = "";
 let guesses = [];
 let results = [];
@@ -16,6 +19,14 @@ const puzzleLabel = document.getElementById("puzzleLabel");
 const clearButton = document.getElementById("clearButton");
 const helpButton = document.getElementById("helpButton");
 const helpPanel = document.getElementById("helpPanel");
+const hintButton = document.getElementById("hintButton");
+const hintPanel = document.getElementById("hintPanel");
+const hintText = document.getElementById("hintText");
+const resultModal = document.getElementById("resultModal");
+const resultTitle = document.getElementById("resultTitle");
+const resultMessage = document.getElementById("resultMessage");
+const closeModalButton = document.getElementById("closeModalButton");
+const doneButton = document.getElementById("doneButton");
 
 const keyboardLayout = [
   ["Q","W","E","R","T","Y","U","I","O","P"],
@@ -106,6 +117,7 @@ async function loadTodayPuzzle() {
   const answerIndex = headers.indexOf("ANSWER");
   const statusIndex = headers.indexOf("STATUS");
   const numberIndex = headers.indexOf("PUZZLE #");
+  const hintIndex = headers.indexOf("OPTIONAL HINT");
 
   const requestedDate =
     new URLSearchParams(window.location.search).get("date") || getCentralDateKey();
@@ -128,7 +140,8 @@ async function loadTodayPuzzle() {
   return {
     date: requestedDate,
     answer: loadedAnswer,
-    number: String(match[numberIndex] || "").trim()
+    number: String(match[numberIndex] || "").trim(),
+    hint: hintIndex >= 0 ? String(match[hintIndex] || "").trim() : ""
   };
 }
 
@@ -140,7 +153,9 @@ function saveState() {
   localStorage.setItem(storageKey(), JSON.stringify({
     guesses,
     results,
-    gameOver
+    gameOver,
+    hintUsed,
+    resultModalShown
   }));
 }
 
@@ -151,6 +166,8 @@ function loadState() {
     guesses = saved.guesses.slice(0, MAX_GUESSES);
     results = saved.results.slice(0, MAX_GUESSES);
     gameOver = Boolean(saved.gameOver);
+    hintUsed = Boolean(saved.hintUsed);
+    resultModalShown = Boolean(saved.resultModalShown);
   } catch {
     localStorage.removeItem(storageKey());
   }
@@ -205,6 +222,12 @@ function restoreBoard() {
     }
   });
 
+  if (hintUsed && hint) {
+    hintText.textContent = hint;
+    hintPanel.hidden = false;
+    hintButton.textContent = "Hide Hint";
+  }
+
   if (gameOver) {
     message.textContent = guesses.includes(answer) ? "Correct." : `The word was ${answer}.`;
   }
@@ -250,9 +273,11 @@ function submitGuess() {
   if (currentGuess === answer) {
     message.textContent = "Correct.";
     gameOver = true;
+    showResultModal(true);
   } else if (guesses.length === MAX_GUESSES) {
     message.textContent = `The word was ${answer}.`;
     gameOver = true;
+    showResultModal(false);
   } else {
     message.textContent = "";
   }
@@ -306,6 +331,30 @@ function updateKeyColor(letter, status) {
   }
 }
 
+function toggleHint() {
+  if (!hint) return;
+  hintUsed = true;
+  hintText.textContent = hint;
+  hintPanel.hidden = !hintPanel.hidden;
+  hintButton.textContent = hintPanel.hidden ? "Show Hint" : "Hide Hint";
+  saveState();
+}
+
+function showResultModal(won) {
+  resultTitle.textContent = won ? "Congratulations!" : "Good try!";
+  resultMessage.textContent = won
+    ? `You solved Globel${puzzleNumber ? ` #${puzzleNumber}` : ""} in ${guesses.length} ${guesses.length === 1 ? "guess" : "guesses"}.`
+    : `Today’s answer was ${answer}.`;
+  resultModal.hidden = false;
+  resultModalShown = true;
+  saveState();
+  doneButton.focus();
+}
+
+function closeResultModal() {
+  resultModal.hidden = true;
+}
+
 async function initialize() {
   createBoard();
   createKeyboard();
@@ -316,14 +365,22 @@ async function initialize() {
     answer = puzzle.answer;
     puzzleDate = puzzle.date;
     puzzleNumber = puzzle.number;
+    hint = puzzle.hint;
 
     puzzleLabel.textContent = puzzleNumber
       ? `Puzzle #${puzzleNumber} · ${puzzleDate}`
       : `Daily puzzle · ${puzzleDate}`;
 
+    hintButton.disabled = !hint;
+    hintButton.textContent = hint ? "Show Hint" : "No Hint Available";
+
     loadState();
     restoreBoard();
     keyboard.classList.remove("disabled");
+
+    if (gameOver && !resultModalShown) {
+      showResultModal(guesses.includes(answer));
+    }
     message.textContent = gameOver
       ? (guesses.includes(answer) ? "Correct." : `The word was ${answer}.`)
       : "";
@@ -339,6 +396,11 @@ document.addEventListener("keydown", event => {
   else if (key === "BACKSPACE") handleInput("BACK");
   else if (/^[A-Z]$/.test(key)) handleInput(key);
 });
+
+hintButton.addEventListener("click", toggleHint);
+closeModalButton.addEventListener("click", closeResultModal);
+doneButton.addEventListener("click", closeResultModal);
+resultModal.addEventListener("click", event => { if (event.target === resultModal) closeResultModal(); });
 
 helpButton.addEventListener("click", () => {
   helpPanel.hidden = !helpPanel.hidden;
