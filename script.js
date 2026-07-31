@@ -2,15 +2,14 @@ const MAX_GUESSES = 6;
 const WORD_LENGTH = 5;
 
 let answer = "";
+let hint = "";
 let puzzleDate = "";
 let puzzleNumber = "";
-let hint = "";
-let hintUsed = false;
-let resultModalShown = false;
 let currentGuess = "";
 let guesses = [];
 let results = [];
 let gameOver = false;
+let hintUsed = false;
 
 const board = document.getElementById("board");
 const keyboard = document.getElementById("keyboard");
@@ -33,6 +32,11 @@ const keyboardLayout = [
   ["A","S","D","F","G","H","J","K","L"],
   ["ENTER","Z","X","C","V","B","N","M","BACK"]
 ];
+
+function setMessage(text, isError = false) {
+  message.textContent = text;
+  message.classList.toggle("error", isError);
+}
 
 function getCentralDateKey(date = new Date()) {
   const parts = new Intl.DateTimeFormat("en-US", {
@@ -82,25 +86,25 @@ function parseCsv(text) {
 
 function normalizeDate(value) {
   const trimmed = String(value || "").trim();
-  const isoMatch = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if (isoMatch) return `${isoMatch[1]}-${isoMatch[2]}-${isoMatch[3]}`;
+  const iso = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
 
-  const slashMatch = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-  if (slashMatch) {
-    return `${slashMatch[3]}-${slashMatch[1].padStart(2, "0")}-${slashMatch[2].padStart(2, "0")}`;
+  const slash = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (slash) {
+    return `${slash[3]}-${slash[1].padStart(2, "0")}-${slash[2].padStart(2, "0")}`;
   }
 
   return trimmed;
 }
 
 async function loadTodayPuzzle() {
-  const response = await fetch(`${GLOBEL_CONFIG.puzzleFeedUrl}&cacheBust=${Date.now()}`, {
-    cache: "no-store"
-  });
+  const separator = GLOBEL_CONFIG.puzzleFeedUrl.includes("?") ? "&" : "?";
+  const response = await fetch(
+    `${GLOBEL_CONFIG.puzzleFeedUrl}${separator}cacheBust=${Date.now()}`,
+    { cache: "no-store" }
+  );
 
-  if (!response.ok) {
-    throw new Error("The puzzle schedule could not be loaded.");
-  }
+  if (!response.ok) throw new Error("The puzzle schedule could not be loaded.");
 
   const rows = parseCsv(await response.text());
   const headerIndex = rows.findIndex(row =>
@@ -108,9 +112,7 @@ async function loadTodayPuzzle() {
     row.some(cell => cell.trim().toUpperCase() === "ANSWER")
   );
 
-  if (headerIndex === -1) {
-    throw new Error("The spreadsheet header row could not be found.");
-  }
+  if (headerIndex === -1) throw new Error("The spreadsheet header row could not be found.");
 
   const headers = rows[headerIndex].map(cell => cell.trim().toUpperCase());
   const dateIndex = headers.indexOf("DATE");
@@ -128,14 +130,14 @@ async function loadTodayPuzzle() {
     return date === requestedDate && status === GLOBEL_CONFIG.readyStatus;
   });
 
-  if (!match) {
-    throw new Error(`No Ready puzzle is scheduled for ${requestedDate}.`);
-  }
+  if (!match) throw new Error(`No Ready puzzle is scheduled for ${requestedDate}.`);
 
   const loadedAnswer = String(match[answerIndex] || "").trim().toUpperCase();
   if (!/^[A-Z]{5}$/.test(loadedAnswer)) {
     throw new Error("Today’s answer must contain exactly five letters.");
   }
+
+  VALID_FIVE_LETTER_WORDS.add(loadedAnswer);
 
   return {
     date: requestedDate,
@@ -154,8 +156,7 @@ function saveState() {
     guesses,
     results,
     gameOver,
-    hintUsed,
-    resultModalShown
+    hintUsed
   }));
 }
 
@@ -163,11 +164,11 @@ function loadState() {
   try {
     const saved = JSON.parse(localStorage.getItem(storageKey()));
     if (!saved || !Array.isArray(saved.guesses) || !Array.isArray(saved.results)) return;
+
     guesses = saved.guesses.slice(0, MAX_GUESSES);
     results = saved.results.slice(0, MAX_GUESSES);
     gameOver = Boolean(saved.gameOver);
     hintUsed = Boolean(saved.hintUsed);
-    resultModalShown = Boolean(saved.resultModalShown);
   } catch {
     localStorage.removeItem(storageKey());
   }
@@ -175,6 +176,7 @@ function loadState() {
 
 function createBoard() {
   board.innerHTML = "";
+
   for (let rowIndex = 0; rowIndex < MAX_GUESSES; rowIndex++) {
     const row = document.createElement("div");
     row.className = "row";
@@ -183,15 +185,16 @@ function createBoard() {
       const tile = document.createElement("div");
       tile.className = "tile";
       tile.id = `tile-${rowIndex}-${columnIndex}`;
-      tile.setAttribute("aria-label", `Row ${rowIndex + 1}, letter ${columnIndex + 1}`);
       row.appendChild(tile);
     }
+
     board.appendChild(row);
   }
 }
 
 function createKeyboard() {
   keyboard.innerHTML = "";
+
   keyboardLayout.forEach(rowLetters => {
     const row = document.createElement("div");
     row.className = "keyboard-row";
@@ -203,10 +206,13 @@ function createKeyboard() {
       button.className = "key";
       button.textContent = letter === "BACK" ? "⌫" : letter;
       button.setAttribute("aria-label", letter === "BACK" ? "Backspace" : letter);
+
       if (letter === "ENTER" || letter === "BACK") button.classList.add("wide");
+
       button.addEventListener("click", () => handleInput(letter));
       row.appendChild(button);
     });
+
     keyboard.appendChild(row);
   });
 }
@@ -214,6 +220,7 @@ function createKeyboard() {
 function restoreBoard() {
   guesses.forEach((guess, rowIndex) => {
     const result = results[rowIndex];
+
     for (let i = 0; i < WORD_LENGTH; i++) {
       const tile = document.getElementById(`tile-${rowIndex}-${i}`);
       tile.textContent = guess[i];
@@ -229,21 +236,27 @@ function restoreBoard() {
   }
 
   if (gameOver) {
-    message.textContent = guesses.includes(answer) ? "Correct." : `The word was ${answer}.`;
+    setMessage(guesses.includes(answer) ? "Correct." : `The word was ${answer}.`);
   }
 }
 
 function handleInput(key) {
   if (gameOver || !answer) return;
-  if (key === "ENTER") return submitGuess();
+
+  if (key === "ENTER") {
+    submitGuess();
+    return;
+  }
 
   if (key === "BACK") {
     currentGuess = currentGuess.slice(0, -1);
-    return updateCurrentRow();
+    updateCurrentRow();
+    return;
   }
 
   if (/^[A-Z]$/.test(key) && currentGuess.length < WORD_LENGTH) {
     currentGuess += key;
+    setMessage("");
     updateCurrentRow();
   }
 }
@@ -261,29 +274,46 @@ function updateCurrentRow() {
 
 function submitGuess() {
   if (currentGuess.length !== WORD_LENGTH) {
-    message.textContent = "Enter five letters.";
+    setMessage("Enter five letters.", true);
     return;
   }
 
-  const result = scoreGuess(currentGuess, answer);
-  revealGuess(currentGuess, result);
-  guesses.push(currentGuess);
-  results.push(result);
+  const submittedGuess = currentGuess.toUpperCase();
 
-  if (currentGuess === answer) {
-    message.textContent = "Correct.";
-    gameOver = true;
-    window.setTimeout(() => showResultModal(true), 350);
-  } else if (guesses.length === MAX_GUESSES) {
-    message.textContent = `The word was ${answer}.`;
-    gameOver = true;
-    window.setTimeout(() => showResultModal(false), 350);
-  } else {
-    message.textContent = "";
+  if (!VALID_FIVE_LETTER_WORDS.has(submittedGuess)) {
+    setMessage("Not in the word list.", true);
+    return;
   }
 
+  const result = scoreGuess(submittedGuess, answer);
+  revealGuess(submittedGuess, result);
+
+  guesses.push(submittedGuess);
+  results.push(result);
   currentGuess = "";
+
+  const won = submittedGuess === answer;
+  const lost = !won && guesses.length === MAX_GUESSES;
+
+  if (won) {
+    gameOver = true;
+    setMessage("Correct.");
+  } else if (lost) {
+    gameOver = true;
+    setMessage(`The word was ${answer}.`);
+  } else {
+    setMessage("");
+  }
+
   saveState();
+
+  if (gameOver) {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        showResultModal(won);
+      });
+    });
+  }
 }
 
 function scoreGuess(guess, target) {
@@ -299,17 +329,20 @@ function scoreGuess(guess, target) {
 
   for (let i = 0; i < WORD_LENGTH; i++) {
     if (result[i] === "correct") continue;
+
     const matchIndex = remaining.indexOf(guess[i]);
     if (matchIndex !== -1) {
       result[i] = "present";
       remaining[matchIndex] = null;
     }
   }
+
   return result;
 }
 
 function revealGuess(guess, result) {
   const rowIndex = guesses.length;
+
   for (let i = 0; i < WORD_LENGTH; i++) {
     const tile = document.getElementById(`tile-${rowIndex}-${i}`);
     tile.textContent = guess[i];
@@ -333,6 +366,7 @@ function updateKeyColor(letter, status) {
 
 function toggleHint() {
   if (!hint) return;
+
   hintUsed = true;
   hintText.textContent = hint;
   hintPanel.hidden = !hintPanel.hidden;
@@ -345,11 +379,10 @@ function showResultModal(won) {
   resultMessage.textContent = won
     ? `You solved Globel${puzzleNumber ? ` #${puzzleNumber}` : ""} in ${guesses.length} ${guesses.length === 1 ? "guess" : "guesses"}.`
     : `Today’s answer was ${answer}.`;
+
   resultModal.classList.add("is-open");
   resultModal.setAttribute("aria-hidden", "false");
-  resultModalShown = true;
-  saveState();
-  window.setTimeout(() => doneButton.focus(), 50);
+  doneButton.focus();
 }
 
 function closeResultModal() {
@@ -364,6 +397,7 @@ async function initialize() {
 
   try {
     const puzzle = await loadTodayPuzzle();
+
     answer = puzzle.answer;
     puzzleDate = puzzle.date;
     puzzleNumber = puzzle.number;
@@ -379,34 +413,36 @@ async function initialize() {
     loadState();
     restoreBoard();
     keyboard.classList.remove("disabled");
-
-    if (gameOver) {
-      window.setTimeout(() => showResultModal(guesses.includes(answer)), 250);
-    }
-    message.textContent = gameOver
-      ? (guesses.includes(answer) ? "Correct." : `The word was ${answer}.`)
-      : "";
   } catch (error) {
     puzzleLabel.textContent = "Daily five-letter word game";
-    message.textContent = error.message;
+    setMessage(error.message, true);
   }
 }
 
 document.addEventListener("keydown", event => {
+  if (resultModal.classList.contains("is-open")) {
+    if (event.key === "Escape") closeResultModal();
+    return;
+  }
+
   const key = event.key.toUpperCase();
+
   if (key === "ENTER") handleInput("ENTER");
   else if (key === "BACKSPACE") handleInput("BACK");
   else if (/^[A-Z]$/.test(key)) handleInput(key);
 });
 
-hintButton.addEventListener("click", toggleHint);
-closeModalButton.addEventListener("click", closeResultModal);
-doneButton.addEventListener("click", closeResultModal);
-resultModal.addEventListener("click", event => { if (event.target === resultModal) closeResultModal(); });
-
 helpButton.addEventListener("click", () => {
   helpPanel.hidden = !helpPanel.hidden;
   helpButton.setAttribute("aria-expanded", String(!helpPanel.hidden));
+});
+
+hintButton.addEventListener("click", toggleHint);
+closeModalButton.addEventListener("click", closeResultModal);
+doneButton.addEventListener("click", closeResultModal);
+
+resultModal.addEventListener("click", event => {
+  if (event.target === resultModal) closeResultModal();
 });
 
 clearButton.addEventListener("click", () => {

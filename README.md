@@ -1,17 +1,32 @@
-# Globel popup fix — v1.2
+# Globel v1.3
 
-Upload and replace these files in the ROOT of the GitHub repository:
+This update fixes both requested issues.
 
-- index.html
-- style.css
-- config.js
-- script.js
+## Changes
 
-After committing, wait about one minute and hard-refresh the GitHub Pages game.
+1. Only recognized five-letter words are accepted.
+   - Invalid entries display: `Not in the word list.`
+   - Invalid entries do not consume a guess.
+   - The dictionary is stored locally in `valid-words.js`, so no external dictionary service is required.
 
-You should see `v1.2` in small text beside the footer. If you do not see it, GitHub Pages or the browser is still serving the old files.
+2. The result popup opens immediately after the winning guess or sixth failed guess.
+   - It no longer depends on reloading or pressing Clear saved game.
+   - It opens after the final colored tiles have rendered.
 
-The popup now:
-- uses a visible CSS class rather than the HTML hidden attribute
-- opens after a short delay so the final tile result appears first
-- reappears when a completed daily game is reopened
+## Upload to GitHub
+
+Replace or add these files in the repository root:
+
+- `index.html`
+- `style.css`
+- `config.js`
+- `script.js`
+- `valid-words.js`  ← new and required
+
+Commit the changes, wait for GitHub Pages to redeploy, and hard-refresh.
+
+The footer should show `v1.3`.
+
+## Google Sheet feed
+
+https://docs.google.com/spreadsheets/d/e/2PACX-1vSevqoDAZpCznoy2rAoyLQ9CDbVWjeGo8dmtLkHe947Q_ff09ZGTOR6NALeB9F4sg/pub?gid=796509207&single=true&output=csv
