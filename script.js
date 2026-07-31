@@ -273,11 +273,11 @@ function submitGuess() {
   if (currentGuess === answer) {
     message.textContent = "Correct.";
     gameOver = true;
-    showResultModal(true);
+    window.setTimeout(() => showResultModal(true), 350);
   } else if (guesses.length === MAX_GUESSES) {
     message.textContent = `The word was ${answer}.`;
     gameOver = true;
-    showResultModal(false);
+    window.setTimeout(() => showResultModal(false), 350);
   } else {
     message.textContent = "";
   }
@@ -345,14 +345,16 @@ function showResultModal(won) {
   resultMessage.textContent = won
     ? `You solved Globel${puzzleNumber ? ` #${puzzleNumber}` : ""} in ${guesses.length} ${guesses.length === 1 ? "guess" : "guesses"}.`
     : `Today’s answer was ${answer}.`;
-  resultModal.hidden = false;
+  resultModal.classList.add("is-open");
+  resultModal.setAttribute("aria-hidden", "false");
   resultModalShown = true;
   saveState();
-  doneButton.focus();
+  window.setTimeout(() => doneButton.focus(), 50);
 }
 
 function closeResultModal() {
-  resultModal.hidden = true;
+  resultModal.classList.remove("is-open");
+  resultModal.setAttribute("aria-hidden", "true");
 }
 
 async function initialize() {
@@ -378,8 +380,8 @@ async function initialize() {
     restoreBoard();
     keyboard.classList.remove("disabled");
 
-    if (gameOver && !resultModalShown) {
-      showResultModal(guesses.includes(answer));
+    if (gameOver) {
+      window.setTimeout(() => showResultModal(guesses.includes(answer)), 250);
     }
     message.textContent = gameOver
       ? (guesses.includes(answer) ? "Correct." : `The word was ${answer}.`)
