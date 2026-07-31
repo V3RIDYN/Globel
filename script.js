@@ -10,6 +10,8 @@ let guesses = [];
 let results = [];
 let gameOver = false;
 let hintUsed = false;
+let allPuzzles = [];
+let todayKey = "";
 
 const board = document.getElementById("board");
 const keyboard = document.getElementById("keyboard");
@@ -21,11 +23,18 @@ const helpPanel = document.getElementById("helpPanel");
 const hintButton = document.getElementById("hintButton");
 const hintPanel = document.getElementById("hintPanel");
 const hintText = document.getElementById("hintText");
+const archiveButton = document.getElementById("archiveButton");
+const todayButton = document.getElementById("todayButton");
+const archiveModal = document.getElementById("archiveModal");
+const archiveList = document.getElementById("archiveList");
+const closeArchiveButton = document.getElementById("closeArchiveButton");
 const resultModal = document.getElementById("resultModal");
 const resultTitle = document.getElementById("resultTitle");
 const resultMessage = document.getElementById("resultMessage");
+const resultFollowUp = document.getElementById("resultFollowUp");
 const closeModalButton = document.getElementById("closeModalButton");
 const doneButton = document.getElementById("doneButton");
+const resultTodayButton = document.getElementById("resultTodayButton");
 
 const keyboardLayout = [
   ["Q","W","E","R","T","Y","U","I","O","P"],
@@ -97,14 +106,24 @@ function normalizeDate(value) {
   return trimmed;
 }
 
-async function loadTodayPuzzle() {
+function playableStatuses() {
+  const configured = Array.isArray(GLOBEL_CONFIG.playableStatuses)
+    ? GLOBEL_CONFIG.playableStatuses
+    : [GLOBEL_CONFIG.readyStatus || "READY"];
+
+  return new Set(configured.map(status => String(status).trim().toUpperCase()));
+}
+
+async function loadPuzzleFeed() {
   const separator = GLOBEL_CONFIG.puzzleFeedUrl.includes("?") ? "&" : "?";
   const response = await fetch(
     `${GLOBEL_CONFIG.puzzleFeedUrl}${separator}cacheBust=${Date.now()}`,
     { cache: "no-store" }
   );
 
-  if (!response.ok) throw new Error("The puzzle schedule could not be loaded.");
+  if (!response.ok) {
+    throw new Error("The puzzle schedule could not be loaded.");
+  }
 
   const rows = parseCsv(await response.text());
   const headerIndex = rows.findIndex(row =>
@@ -112,43 +131,57 @@ async function loadTodayPuzzle() {
     row.some(cell => cell.trim().toUpperCase() === "ANSWER")
   );
 
-  if (headerIndex === -1) throw new Error("The spreadsheet header row could not be found.");
-
-  const headers = rows[headerIndex].map(cell => cell.trim().toUpperCase());
-  const dateIndex = headers.indexOf("DATE");
-  const answerIndex = headers.indexOf("ANSWER");
-  const statusIndex = headers.indexOf("STATUS");
-  const numberIndex = headers.indexOf("PUZZLE #");
-  const hintIndex = headers.indexOf("OPTIONAL HINT");
-
-  const requestedDate =
-    new URLSearchParams(window.location.search).get("date") || getCentralDateKey();
-
-  const match = rows.slice(headerIndex + 1).find(row => {
-    const date = normalizeDate(row[dateIndex]);
-    const status = String(row[statusIndex] || "").trim().toUpperCase();
-    return date === requestedDate && status === GLOBEL_CONFIG.readyStatus;
-  });
-
-  if (!match) throw new Error(`No Ready puzzle is scheduled for ${requestedDate}.`);
-
-  const loadedAnswer = String(match[answerIndex] || "").trim().toUpperCase();
-  if (!/^[A-Z]{5}$/.test(loadedAnswer)) {
-    throw new Error("Today’s answer must contain exactly five letters.");
+  if (headerIndex === -1) {
+    throw new Error("The spreadsheet header row could not be found.");
   }
 
-  VALID_FIVE_LETTER_WORDS.add(loadedAnswer);
+  const headers = rows[headerIndex].map(cell => cell.trim().toUpperCase());
+  const index = name => headers.indexOf(name);
+  const dateIndex = index("DATE");
+  const answerIndex = index("ANSWER");
+  const statusIndex = index("STATUS");
+  const numberIndex = index("PUZZLE #");
+  const hintIndex = index("OPTIONAL HINT");
+  const allowed = playableStatuses();
 
-  return {
-    date: requestedDate,
-    answer: loadedAnswer,
-    number: String(match[numberIndex] || "").trim(),
-    hint: hintIndex >= 0 ? String(match[hintIndex] || "").trim() : ""
-  };
+  return rows.slice(headerIndex + 1)
+    .map(row => ({
+      date: normalizeDate(row[dateIndex]),
+      answer: String(row[answerIndex] || "").trim().toUpperCase(),
+      status: String(row[statusIndex] || "").trim().toUpperCase(),
+      number: numberIndex >= 0 ? String(row[numberIndex] || "").trim() : "",
+      hint: hintIndex >= 0 ? String(row[hintIndex] || "").trim() : ""
+    }))
+    .filter(puzzle =>
+      /^\d{4}-\d{2}-\d{2}$/.test(puzzle.date) &&
+      /^[A-Z]{5}$/.test(puzzle.answer) &&
+      allowed.has(puzzle.status)
+    )
+    .sort((a, b) => a.date.localeCompare(b.date));
+}
+
+function requestedDateKey() {
+  return new URLSearchParams(window.location.search).get("date") || todayKey;
+}
+
+function getRequestedPuzzle() {
+  const requestedDate = requestedDateKey();
+  const puzzle = allPuzzles.find(item => item.date === requestedDate);
+
+  if (!puzzle) {
+    throw new Error(`No playable puzzle is scheduled for ${requestedDate}.`);
+  }
+
+  VALID_FIVE_LETTER_WORDS.add(puzzle.answer);
+  return puzzle;
+}
+
+function storageKeyFor(date) {
+  return `globel:${date}`;
 }
 
 function storageKey() {
-  return `globel:${puzzleDate}`;
+  return storageKeyFor(puzzleDate);
 }
 
 function saveState() {
@@ -172,6 +205,18 @@ function loadState() {
   } catch {
     localStorage.removeItem(storageKey());
   }
+}
+
+function archiveState(date) {
+  try {
+    const saved = JSON.parse(localStorage.getItem(storageKeyFor(date)));
+    if (!saved) return "";
+    if (saved.gameOver) return "Completed";
+    if (Array.isArray(saved.guesses) && saved.guesses.length > 0) return "In progress";
+  } catch {
+    return "";
+  }
+  return "";
 }
 
 function createBoard() {
@@ -207,7 +252,9 @@ function createKeyboard() {
       button.textContent = letter === "BACK" ? "⌫" : letter;
       button.setAttribute("aria-label", letter === "BACK" ? "Backspace" : letter);
 
-      if (letter === "ENTER" || letter === "BACK") button.classList.add("wide");
+      if (letter === "ENTER" || letter === "BACK") {
+        button.classList.add("wide");
+      }
 
       button.addEventListener("click", () => handleInput(letter));
       row.appendChild(button);
@@ -309,9 +356,7 @@ function submitGuess() {
 
   if (gameOver) {
     requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        showResultModal(won);
-      });
+      requestAnimationFrame(() => showResultModal(won));
     });
   }
 }
@@ -356,7 +401,8 @@ function updateKeyColor(letter, status) {
   if (!button) return;
 
   const priority = { absent: 1, present: 2, correct: 3 };
-  const current = ["absent", "present", "correct"].find(x => button.classList.contains(x));
+  const current = ["absent", "present", "correct"]
+    .find(className => button.classList.contains(className));
 
   if (!current || priority[status] > priority[current]) {
     button.classList.remove("absent", "present", "correct");
@@ -374,38 +420,184 @@ function toggleHint() {
   saveState();
 }
 
+function navigateToDate(date) {
+  const url = new URL(window.location.href);
+  url.searchParams.set("date", date);
+  window.location.href = url.toString();
+}
+
+function navigateToToday() {
+  const url = new URL(window.location.href);
+  url.searchParams.delete("date");
+  window.location.href = url.toString();
+}
+
+function dateObject(date) {
+  return new Date(`${date}T12:00:00Z`);
+}
+
+function formatPuzzleDate(date) {
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone: "UTC",
+    month: "long",
+    day: "numeric",
+    year: "numeric"
+  }).format(dateObject(date));
+}
+
+function monthKey(date) {
+  return date.slice(0, 7);
+}
+
+function monthLabel(date) {
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone: "UTC",
+    month: "long",
+    year: "numeric"
+  }).format(dateObject(`${monthKey(date)}-01`));
+}
+
+function buildArchive() {
+  const pastPuzzles = allPuzzles
+    .filter(item => item.date < todayKey)
+    .sort((a, b) => b.date.localeCompare(a.date));
+
+  archiveList.innerHTML = "";
+
+  if (!pastPuzzles.length) {
+    const empty = document.createElement("p");
+    empty.className = "archive-empty";
+    empty.textContent = "No past puzzles are available yet.";
+    archiveList.appendChild(empty);
+    return;
+  }
+
+  const grouped = new Map();
+
+  pastPuzzles.forEach(puzzle => {
+    const key = monthKey(puzzle.date);
+    if (!grouped.has(key)) grouped.set(key, []);
+    grouped.get(key).push(puzzle);
+  });
+
+  grouped.forEach(puzzles => {
+    const section = document.createElement("section");
+    section.className = "archive-month";
+
+    const heading = document.createElement("h3");
+    heading.textContent = monthLabel(puzzles[0].date);
+    section.appendChild(heading);
+
+    const items = document.createElement("div");
+    items.className = "archive-items";
+
+    puzzles.forEach(puzzle => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "archive-item";
+      button.addEventListener("click", () => navigateToDate(puzzle.date));
+
+      const main = document.createElement("span");
+      main.className = "archive-item-main";
+
+      const date = document.createElement("span");
+      date.className = "archive-item-date";
+      date.textContent = formatPuzzleDate(puzzle.date);
+
+      const number = document.createElement("span");
+      number.className = "archive-item-number";
+      number.textContent = puzzle.number ? `Puzzle #${puzzle.number}` : "Globel archive";
+
+      main.append(date, number);
+      button.appendChild(main);
+
+      const stateText = archiveState(puzzle.date);
+      if (stateText) {
+        const state = document.createElement("span");
+        state.className = "archive-item-state";
+        state.textContent = stateText;
+        button.appendChild(state);
+      }
+
+      items.appendChild(button);
+    });
+
+    section.appendChild(items);
+    archiveList.appendChild(section);
+  });
+}
+
+function openModal(modal) {
+  modal.classList.add("is-open");
+  modal.setAttribute("aria-hidden", "false");
+}
+
+function closeModal(modal) {
+  modal.classList.remove("is-open");
+  modal.setAttribute("aria-hidden", "true");
+}
+
 function showResultModal(won) {
+  const isArchive = puzzleDate < todayKey;
+  const isPreview = puzzleDate > todayKey;
+
   resultTitle.textContent = won ? "Congratulations!" : "Good try!";
   resultMessage.textContent = won
     ? `You solved Globel${puzzleNumber ? ` #${puzzleNumber}` : ""} in ${guesses.length} ${guesses.length === 1 ? "guess" : "guesses"}.`
-    : `Today’s answer was ${answer}.`;
+    : `The answer was ${answer}.`;
 
-  resultModal.classList.add("is-open");
-  resultModal.setAttribute("aria-hidden", "false");
+  if (isArchive) {
+    resultFollowUp.textContent = "Choose another past puzzle or return to today’s Globel.";
+    resultTodayButton.hidden = false;
+  } else if (isPreview) {
+    resultFollowUp.textContent = "This was a preview puzzle.";
+    resultTodayButton.hidden = false;
+  } else {
+    resultFollowUp.textContent = "Come back tomorrow for a new Globel.";
+    resultTodayButton.hidden = true;
+  }
+
+  openModal(resultModal);
   doneButton.focus();
 }
 
-function closeResultModal() {
-  resultModal.classList.remove("is-open");
-  resultModal.setAttribute("aria-hidden", "true");
+function updatePuzzleLabel() {
+  const formatted = formatPuzzleDate(puzzleDate);
+  const number = puzzleNumber ? ` #${puzzleNumber}` : "";
+
+  if (puzzleDate < todayKey) {
+    puzzleLabel.textContent = `Archive Puzzle${number} · ${formatted}`;
+  } else if (puzzleDate > todayKey) {
+    puzzleLabel.textContent = `Preview Puzzle${number} · ${formatted}`;
+  } else {
+    puzzleLabel.textContent = puzzleNumber
+      ? `Puzzle #${puzzleNumber} · ${formatted}`
+      : `Daily puzzle · ${formatted}`;
+  }
 }
 
 async function initialize() {
   createBoard();
   createKeyboard();
   keyboard.classList.add("disabled");
+  todayKey = getCentralDateKey();
 
   try {
-    const puzzle = await loadTodayPuzzle();
+    allPuzzles = await loadPuzzleFeed();
+    archiveButton.disabled = false;
+    buildArchive();
+
+    const puzzle = getRequestedPuzzle();
 
     answer = puzzle.answer;
     puzzleDate = puzzle.date;
     puzzleNumber = puzzle.number;
     hint = puzzle.hint;
 
-    puzzleLabel.textContent = puzzleNumber
-      ? `Puzzle #${puzzleNumber} · ${puzzleDate}`
-      : `Daily puzzle · ${puzzleDate}`;
+    updatePuzzleLabel();
+
+    const viewingToday = puzzleDate === todayKey;
+    todayButton.hidden = viewingToday;
 
     hintButton.disabled = !hint;
     hintButton.textContent = hint ? "Show Hint" : "No Hint Available";
@@ -420,8 +612,10 @@ async function initialize() {
 }
 
 document.addEventListener("keydown", event => {
-  if (resultModal.classList.contains("is-open")) {
-    if (event.key === "Escape") closeResultModal();
+  const open = document.querySelector(".modal-backdrop.is-open");
+
+  if (open) {
+    if (event.key === "Escape") closeModal(open);
     return;
   }
 
@@ -438,15 +632,35 @@ helpButton.addEventListener("click", () => {
 });
 
 hintButton.addEventListener("click", toggleHint);
-closeModalButton.addEventListener("click", closeResultModal);
-doneButton.addEventListener("click", closeResultModal);
 
-resultModal.addEventListener("click", event => {
-  if (event.target === resultModal) closeResultModal();
+archiveButton.addEventListener("click", () => {
+  buildArchive();
+  openModal(archiveModal);
+  closeArchiveButton.focus();
+});
+
+todayButton.addEventListener("click", navigateToToday);
+resultTodayButton.addEventListener("click", navigateToToday);
+
+closeArchiveButton.addEventListener("click", () => closeModal(archiveModal));
+closeModalButton.addEventListener("click", () => closeModal(resultModal));
+doneButton.addEventListener("click", () => closeModal(resultModal));
+
+[archiveModal, resultModal].forEach(modal => {
+  modal.addEventListener("click", event => {
+    if (event.target === modal) closeModal(modal);
+  });
 });
 
 clearButton.addEventListener("click", () => {
   if (!puzzleDate) return;
+
+  const confirmed = window.confirm(
+    "Clear this browser’s saved progress for this puzzle?"
+  );
+
+  if (!confirmed) return;
+
   localStorage.removeItem(storageKey());
   window.location.reload();
 });

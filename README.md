@@ -1,32 +1,46 @@
-# Globel v1.3
+# Globel v1.4 — Past Puzzles
 
-This update fixes both requested issues.
+This version adds a playable archive using the existing Google Sheets puzzle schedule.
 
-## Changes
+## New features
 
-1. Only recognized five-letter words are accepted.
-   - Invalid entries display: `Not in the word list.`
-   - Invalid entries do not consume a guess.
-   - The dictionary is stored locally in `valid-words.js`, so no external dictionary service is required.
+- Past Puzzles button
+- Archive grouped by month
+- Puzzle date and puzzle number shown without exposing the answer
+- Completed and In progress labels based on browser-saved progress
+- Separate saved game for every puzzle date
+- Support for both Ready and Published spreadsheet rows
+- Today’s Puzzle button when viewing an archive or preview
+- Archive, current, and preview labels
+- Result-popup messaging appropriate to the puzzle date
 
-2. The result popup opens immediately after the winning guess or sixth failed guess.
-   - It no longer depends on reloading or pressing Clear saved game.
-   - It opens after the final colored tiles have rendered.
+## Spreadsheet workflow
+
+Keep old puzzle rows in the Google Sheet.
+
+Playable statuses are:
+
+- Ready
+- Published
+
+Use Draft for future puzzles that should not yet be playable. Retired rows are hidden from the game and archive.
 
 ## Upload to GitHub
 
 Replace or add these files in the repository root:
 
-- `index.html`
-- `style.css`
-- `config.js`
-- `script.js`
-- `valid-words.js`  ← new and required
+- index.html
+- style.css
+- config.js
+- script.js
+- valid-words.js
 
-Commit the changes, wait for GitHub Pages to redeploy, and hard-refresh.
+Then commit the changes and hard-refresh the GitHub Pages site.
 
-The footer should show `v1.3`.
+The footer should show v1.4.
 
-## Google Sheet feed
+## Direct archive links
 
-https://docs.google.com/spreadsheets/d/e/2PACX-1vSevqoDAZpCznoy2rAoyLQ9CDbVWjeGo8dmtLkHe947Q_ff09ZGTOR6NALeB9F4sg/pub?gid=796509207&single=true&output=csv
+A past puzzle can still be opened directly:
+
+?date=2026-07-30
